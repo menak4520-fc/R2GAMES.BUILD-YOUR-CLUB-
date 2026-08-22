@@ -1,0 +1,10 @@
+const express=require('express'),path=require('path'),crypto=require('crypto');
+const app=express(),rooms=new Map();app.use(express.json({limit:'32kb'}));app.use(express.static(path.join(__dirname,'public')));
+const code=()=>crypto.randomBytes(4).toString('hex').toUpperCase();
+const games=['auction','five','deal','blind','guess'];
+app.post('/api/rooms',(req,res)=>{if(!games.includes(req.body.game))return res.status(400).json({error:'لعبة غير صحيحة'});let c;do c=code();while(rooms.has(c));const password=String(req.body.password||'');if(password.length>64)return res.status(400).json({error:'كلمة السر طويلة'});rooms.set(c,{code:c,game:req.body.game,password,createdAt:Date.now(),players:1,status:'waiting'});res.json({ok:true,code:c,game:req.body.game,players:1,passwordProtected:!!password})});
+app.post('/api/rooms/:code/join',(req,res)=>{const r=rooms.get(String(req.params.code).toUpperCase());if(!r)return res.status(404).json({error:'كود الغرفة غير موجود أو انتهت صلاحيته'});if(r.players>=2)return res.status(409).json({error:'الغرفة ممتلئة'});if(r.password&&String(req.body.password||'')!==r.password)return res.status(403).json({error:'كلمة السر غير صحيحة'});r.players=2;r.status='ready';res.json({ok:true,code:r.code,game:r.game,players:2})});
+app.get('/api/rooms/:code',(req,res)=>{const r=rooms.get(String(req.params.code).toUpperCase());if(!r)return res.status(404).json({error:'غير موجود'});res.json({code:r.code,game:r.game,players:r.players,status:r.status,passwordProtected:!!r.password})});
+app.get('/api/health',(req,res)=>res.json({ok:true,rooms:rooms.size,time:Date.now()}));
+setInterval(()=>{let n=Date.now();for(const [c,r] of rooms)if(n-r.createdAt>6*3600000)rooms.delete(c)},300000);
+app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));app.listen(process.env.PORT||3000,()=>console.log('R2 GAMES online'));
